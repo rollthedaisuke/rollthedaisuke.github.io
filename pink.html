@@ -1,0 +1,897 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#cf3a77"><link rel="manifest" href="pink.webmanifest"><link rel="icon" type="image/png" href="pink-icon-192.png"><link rel="apple-touch-icon" href="pink-icon-192.png"><style>:root{color-scheme:light}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style></head><body>
+<title>PDF Merger Pink</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Nunito:wght@400;600;700&family=Quicksand:wght@600;700&display=swap">
+<style>
+/* Layout: one narrow column. Drop zone on top, ordered file list in the middle, merge bar at the bottom. */
+:root {
+  --bg: #fdeef3;
+  --surface: #fff8fb;
+  --fg: #4a2336;
+  --muted: #8a5570;
+  --line: #f3c6d6;
+  --accent: #cf3a77;
+  --accent-fg: #ffffff;
+  --accent-soft: #fbd5e3;
+  --bad: #b3243f;
+  --bad-soft: #fde0e4;
+  --ok: #2f7d57;
+  --font-body: "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-head: "Quicksand", "Nunito", system-ui, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #2a1420;
+    --surface: #381c2b;
+    --fg: #fbe6ef;
+    --muted: #d3a2b8;
+    --line: #5a3347;
+    --accent: #f58bb5;
+    --accent-fg: #3a0f22;
+    --accent-soft: #4d2538;
+    --bad: #ff9aa8;
+    --bad-soft: #4a1f2a;
+    --ok: #8fdcb2;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #2a1420;
+  --surface: #381c2b;
+  --fg: #fbe6ef;
+  --muted: #d3a2b8;
+  --line: #5a3347;
+  --accent: #f58bb5;
+  --accent-fg: #3a0f22;
+  --accent-soft: #4d2538;
+  --bad: #ff9aa8;
+  --bad-soft: #4a1f2a;
+  --ok: #8fdcb2;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  padding-inline: 16px;
+  padding-block: 32px 48px;
+}
+main { max-width: 680px; margin-inline: auto; display: flex; flex-direction: column; gap: 20px; }
+h1 { font-family: var(--font-head); font-size: 1.9rem; font-weight: 700; letter-spacing: -0.01em; margin: 0; text-wrap: balance; color: var(--accent); }
+.lede { color: var(--muted); margin: 4px 0 0; max-width: 60ch; }
+
+.drop {
+  border: 2px dashed var(--accent);
+  background: var(--surface);
+  border-radius: 18px;
+  padding: 32px 16px;
+  text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  transition: border-color .15s, background .15s;
+}
+.drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop p { margin: 0; }
+.drop .hint { color: var(--muted); font-size: 0.875rem; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+
+button {
+  font: inherit; font-weight: 700;
+  border-radius: 999px; border: 1.5px solid var(--line);
+  background: var(--surface); color: var(--fg);
+  padding: 8px 18px; cursor: pointer; min-height: 40px;
+}
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+button.link { border: 0; background: none; color: var(--accent); padding: 8px 6px; text-decoration: underline; text-underline-offset: 3px; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.row {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr) auto;
+  align-items: center; gap: 12px;
+  background: var(--surface);
+  border: 1.5px solid var(--line);
+  border-radius: 14px;
+  padding: 10px 10px 10px 14px;
+}
+.row.dragging { opacity: .5; }
+.row.target { border-color: var(--accent); box-shadow: 0 -2px 0 var(--accent); }
+.row.err { border-color: var(--bad); background: var(--bad-soft); }
+.pos { font-family: var(--font-data); font-size: 0.85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.info { min-width: 0; }
+.name { font-weight: 500; overflow-wrap: anywhere; }
+.meta { font-family: var(--font-data); font-size: 0.78rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.meta .errtext { color: var(--bad); }
+.ctrls { display: flex; gap: 4px; }
+.ctrls button { padding: 4px 0; width: 36px; min-height: 36px; border-radius: 50%; font-family: var(--font-data); background: var(--accent-soft); border-color: transparent; color: var(--accent); }
+.row[draggable="true"] .pos { cursor: grab; }
+
+.bar {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;
+  border-top: 1px solid var(--line); padding-top: 16px;
+}
+.totals { font-family: var(--font-data); font-size: 0.85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.totals strong { color: var(--fg); font-weight: 500; }
+.namefield { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.namefield label { color: var(--muted); font-size: 0.875rem; }
+input[type="text"] {
+  font: inherit; font-family: var(--font-data); font-size: 0.875rem;
+  background: var(--surface); color: var(--fg);
+  border: 1.5px solid var(--line); border-radius: 999px; padding: 7px 14px; min-height: 40px; width: 14rem; max-width: 100%;
+}
+.status { min-height: 1.5em; font-size: 0.9rem; }
+.status.ok { color: var(--ok); }
+.status.bad { color: var(--bad); }
+.status a { color: var(--accent); }
+.note { color: var(--muted); font-size: 0.8rem; margin: 0; }
+:root { --r: 14px; --r-sm: 8px; --r-pill: 999px; --head-color: var(--accent); }
+.ctrls button.viewbtn { width: auto; padding: 4px 14px; border-radius: var(--r-pill); font-family: var(--font-body); font-size: 0.85rem; font-weight: 700; }
+@media (max-width: 480px) {
+  .row { grid-template-columns: 2rem minmax(0, 1fr); row-gap: 8px; }
+  .row .ctrls { grid-column: 2; }
+}
+
+.viewer { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--line); padding-top: 16px; }
+.vhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.vtitleblock { min-width: 0; display: flex; flex-direction: column; }
+.vtitle { font-family: var(--font-head, var(--font-body)); font-size: 1.2rem; font-weight: 700; margin: 0; color: var(--head-color); overflow-wrap: anywhere; }
+.vtools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.tgroup { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.tgroup button { min-height: 36px; padding: 4px 14px; border-radius: var(--r-pill); }
+.tgroup button.sq { width: 36px; padding: 4px 0; font-size: 1.1rem; line-height: 1; }
+.tgroup .totals { white-space: nowrap; }
+.tgroup .zl { min-width: 3.2rem; text-align: center; }
+.tgroup .hintlabel { color: var(--muted); font-size: 0.875rem; }
+.tgroup button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+input[type="number"], #vrange {
+  font: inherit; font-family: var(--font-data); font-size: 0.875rem;
+  background: var(--surface); color: var(--fg);
+  border: 1.5px solid var(--line); border-radius: var(--r-pill); padding: 5px 10px; min-height: 36px;
+}
+input[type="number"] { width: 4.2rem; text-align: center; }
+#vrange { width: 10.5rem; max-width: 100%; }
+
+.vscroll {
+  position: relative; height: min(78vh, 920px); overflow: auto;
+  background: var(--accent-soft); border: 1.5px solid var(--line); border-radius: var(--r-sm); padding: 12px;
+}
+.vscroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.vwrap { display: flex; flex-direction: column; gap: 4px; width: max-content; margin: 0 auto 14px; }
+.vcap, .gcap { display: flex; gap: 8px; align-items: baseline; font-family: var(--font-data); font-size: 0.72rem; color: var(--fg); min-width: 0; }
+.vcap { width: 0; min-width: 100%; }
+.vcap .pn, .gcap .pn { font-weight: 700; font-variant-numeric: tabular-nums; }
+.vcap .src, .gcap .src { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.vpage { position: relative; background: #fff; box-shadow: 0 1px 5px rgba(0, 0, 0, 0.28); }
+.vpage canvas { display: block; width: 100%; height: 100%; }
+.vgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px; }
+.gcell { margin: 0; display: flex; flex-direction: column; gap: 6px; min-width: 0; cursor: pointer; border-radius: var(--r-sm); }
+.gcell .vpage { width: 100%; }
+.gcell:hover .vpage { outline: 2px solid var(--accent); }
+.gcell:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.vmsg { min-height: 1.4em; font-size: 0.9rem; }
+.vmsg.bad { color: var(--bad); }
+.printarea { display: none; }
+
+@media print {
+  @page { margin: 0; }
+  html, body { background: #fff !important; margin: 0 !important; padding: 0 !important; }
+  :root { padding: 0 !important; }
+  body.printing main { display: none !important; }
+  body.printing .printarea { display: block; }
+  .pp { height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden; break-after: page; page-break-after: always; }
+  .pp:last-child { break-after: auto; page-break-after: auto; }
+  .pp img { display: block; max-width: 100%; max-height: 100%; }
+}
+@media (prefers-reduced-motion: reduce) { .drop { transition: none; } }
+</style>
+
+<main>
+  <header>
+    <h1>PDF Merger</h1>
+    <p class="lede">Combine PDFs in the order you set, or open one to view and print it. Files stay in this browser and are never uploaded.</p>
+  </header>
+
+  <section id="drop" class="drop" aria-label="Add PDF files">
+    <p><strong>Drop PDF files here</strong></p>
+    <p class="hint">or choose them from your device</p>
+    <div class="actions">
+      <button type="button" class="primary" id="pick">Choose PDFs</button>
+      <button type="button" class="link" id="sample">Load two sample PDFs</button>
+    </div>
+    <input id="file" type="file" accept="application/pdf,.pdf" multiple hidden>
+  </section>
+
+  <ol id="list" class="list" aria-label="Files to merge, in order"></ol>
+
+  <section class="bar" id="bar" hidden>
+    <div class="totals" id="totals"></div>
+    <div class="namefield">
+      <label for="outname">Save as</label>
+      <input id="outname" type="text" value="merged.pdf" spellcheck="false" autocomplete="off">
+    </div>
+    <div class="actions">
+      <button type="button" id="clear">Clear all</button>
+      <button type="button" id="previewBtn">Preview</button>
+      <button type="button" class="primary" id="merge">Merge &amp; save</button>
+    </div>
+  </section>
+
+  <div id="status" class="status" role="status" aria-live="polite"></div>
+
+  <section id="viewer" class="viewer" hidden aria-label="Document viewer">
+    <div class="vhead">
+      <div class="vtitleblock">
+        <h2 id="vtitle" class="vtitle">Preview</h2>
+        <span id="vsub" class="totals"></span>
+      </div>
+      <button type="button" id="vclose">Close</button>
+    </div>
+    <div class="vtools" role="toolbar" aria-label="Viewer controls">
+      <div class="tgroup">
+        <button type="button" class="sq" id="vprev" aria-label="Previous page">‹</button>
+        <input id="vpage" type="number" min="1" value="1" aria-label="Page number">
+        <span class="totals">of <span id="vtotal">1</span></span>
+        <button type="button" class="sq" id="vnext" aria-label="Next page">›</button>
+      </div>
+      <div class="tgroup">
+        <button type="button" class="sq" id="vzoomout" aria-label="Zoom out">−</button>
+        <span id="vzoomlabel" class="totals zl">100%</span>
+        <button type="button" class="sq" id="vzoomin" aria-label="Zoom in">+</button>
+        <button type="button" id="vfit">Fit</button>
+      </div>
+      <div class="tgroup" role="group" aria-label="Layout">
+        <button type="button" id="vmodePages" aria-pressed="true">Pages</button>
+        <button type="button" id="vmodeGrid" aria-pressed="false">Grid</button>
+      </div>
+      <div class="tgroup">
+        <label for="vrange" class="hintlabel">Print pages</label>
+        <input id="vrange" type="text" placeholder="All, or 1-3, 5" spellcheck="false" autocomplete="off">
+        <button type="button" class="primary" id="vprint">Print</button>
+      </div>
+    </div>
+    <div id="vscroll" class="vscroll" tabindex="0" aria-label="Document pages"></div>
+    <div id="vmsg" class="vmsg" role="status" aria-live="polite"></div>
+  </section>
+  <p class="note">Encrypted PDFs that open without a password are supported. Password-protected files must be unlocked first.</p>
+</main>
+<div id="printArea" class="printarea" aria-hidden="true"></div>
+
+<script src="./pdf-lib.min.js"></script>
+<script src="./pdf.min.js"></script>
+<script>
+(function () {
+  var files = [];          // {id, name, size, bytes, pages, error}
+  var nextId = 1;
+  var dragId = null;
+  var lastBlob = null, pageLabels = [];
+  var downloads = null;
+
+  var $ = function (id) { return document.getElementById(id); };
+  var listEl = $("list"), barEl = $("bar"), statusEl = $("status");
+
+  if (window.claude && window.claude.use) {
+    window.claude.use("downloads").then(function (d) { downloads = d; }).catch(function () { downloads = null; });
+  }
+
+  function fmtSize(n) {
+    if (n < 1024) return n + " B";
+    if (n < 1024 * 1024) return (n / 1024).toFixed(0) + " KB";
+    return (n / 1024 / 1024).toFixed(1) + " MB";
+  }
+  function setStatus(msg, kind) {
+    statusEl.className = "status" + (kind ? " " + kind : "");
+    statusEl.textContent = msg || "";
+  }
+  function isPdf(f) { return f.type === "application/pdf" || /\.pdf$/i.test(f.name); }
+
+  async function addBuffer(name, buf) {
+    var item = { id: nextId++, name: name, size: buf.byteLength, bytes: buf, pages: 0, error: "" };
+    try {
+      var doc = await PDFLib.PDFDocument.load(buf, { ignoreEncryption: true });
+      item.pages = doc.getPageCount();
+    } catch (e) {
+      item.error = "Could not read this file. It may be damaged or password-protected.";
+    }
+    files.push(item);
+  }
+
+  async function addFiles(fileList) {
+    var arr = Array.prototype.slice.call(fileList);
+    var pdfs = arr.filter(isPdf);
+    var skipped = arr.length - pdfs.length;
+    if (!pdfs.length) { setStatus("No PDF files found in that selection.", "bad"); return; }
+    setStatus("Reading " + pdfs.length + " file" + (pdfs.length > 1 ? "s" : "") + "…");
+    for (var i = 0; i < pdfs.length; i++) {
+      await addBuffer(pdfs[i].name, await pdfs[i].arrayBuffer());
+    }
+    invalidate();
+    render();
+    setStatus(skipped ? skipped + " non-PDF file" + (skipped > 1 ? "s were" : " was") + " skipped." : "");
+  }
+
+  async function makeSample(title, pages) {
+    var doc = await PDFLib.PDFDocument.create();
+    var font = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
+    for (var p = 1; p <= pages; p++) {
+      var page = doc.addPage([612, 792]);
+      page.drawText(title, { x: 72, y: 700, size: 28, font: font });
+      page.drawText("Page " + p + " of " + pages, { x: 72, y: 660, size: 14, font: font });
+    }
+    return (await doc.save()).buffer;
+  }
+
+  function move(id, delta) {
+    var i = files.findIndex(function (f) { return f.id === id; });
+    var j = i + delta;
+    if (i < 0 || j < 0 || j >= files.length) return;
+    var t = files[i]; files[i] = files[j]; files[j] = t;
+    invalidate();
+    render();
+  }
+  function remove(id) {
+    if (V.kind === "file" && V.fileId === id) closeViewer();
+    files = files.filter(function (f) { return f.id !== id; });
+    invalidate();
+    render();
+  }
+
+  function btn(label, text, onClick, disabled) {
+    var b = document.createElement("button");
+    b.type = "button"; b.textContent = text; b.setAttribute("aria-label", label);
+    b.disabled = !!disabled; b.addEventListener("click", onClick);
+    return b;
+  }
+
+  function render() {
+    listEl.textContent = "";
+    files.forEach(function (f, i) {
+      var li = document.createElement("li");
+      li.className = "row" + (f.error ? " err" : "");
+      li.draggable = true;
+      li.dataset.id = f.id;
+
+      var pos = document.createElement("span");
+      pos.className = "pos"; pos.textContent = String(i + 1).padStart(2, "0");
+
+      var info = document.createElement("div"); info.className = "info";
+      var name = document.createElement("div"); name.className = "name"; name.textContent = f.name;
+      var meta = document.createElement("div"); meta.className = "meta";
+      if (f.error) {
+        var s = document.createElement("span"); s.className = "errtext"; s.textContent = f.error;
+        meta.appendChild(s);
+      } else {
+        meta.textContent = f.pages + (f.pages === 1 ? " page" : " pages") + " · " + fmtSize(f.size);
+      }
+      info.appendChild(name); info.appendChild(meta);
+
+      var ctrls = document.createElement("div"); ctrls.className = "ctrls";
+      var vb = btn("View " + f.name, "View", function () { viewFile(f.id); }, !!f.error);
+      vb.className = "viewbtn";
+      ctrls.appendChild(vb);
+      ctrls.appendChild(btn("Move " + f.name + " up", "↑", function () { move(f.id, -1); }, i === 0));
+      ctrls.appendChild(btn("Move " + f.name + " down", "↓", function () { move(f.id, 1); }, i === files.length - 1));
+      ctrls.appendChild(btn("Remove " + f.name, "✕", function () { remove(f.id); }));
+
+      li.appendChild(pos); li.appendChild(info); li.appendChild(ctrls);
+
+      li.addEventListener("dragstart", function (e) {
+        dragId = f.id; li.classList.add("dragging");
+        e.dataTransfer.effectAllowed = "move";
+        try { e.dataTransfer.setData("text/plain", String(f.id)); } catch (err) {}
+      });
+      li.addEventListener("dragend", function () { dragId = null; li.classList.remove("dragging"); clearTargets(); });
+      li.addEventListener("dragover", function (e) {
+        if (dragId === null) return;
+        e.preventDefault(); clearTargets(); li.classList.add("target");
+      });
+      li.addEventListener("drop", function (e) {
+        if (dragId === null) return;
+        e.preventDefault(); e.stopPropagation();
+        var from = files.findIndex(function (x) { return x.id === dragId; });
+        var to = files.findIndex(function (x) { return x.id === f.id; });
+        if (from >= 0 && to >= 0 && from !== to) {
+          var moved = files.splice(from, 1)[0];
+          files.splice(to, 0, moved);
+          invalidate();
+        }
+        dragId = null; render();
+      });
+      listEl.appendChild(li);
+    });
+
+    var good = files.filter(function (f) { return !f.error; });
+    var pages = good.reduce(function (n, f) { return n + f.pages; }, 0);
+    var bytes = good.reduce(function (n, f) { return n + f.size; }, 0);
+    barEl.hidden = files.length === 0;
+    $("totals").innerHTML = "<strong>" + good.length + "</strong> file" + (good.length === 1 ? "" : "s") +
+      " · <strong>" + pages + "</strong> pages · ~" + fmtSize(bytes);
+    $("merge").disabled = good.length < 2;
+    $("previewBtn").disabled = good.length < 2;
+  }
+  function clearTargets() {
+    Array.prototype.forEach.call(listEl.querySelectorAll(".target"), function (el) { el.classList.remove("target"); });
+  }
+
+  async function saveBlob(blob, filename) {
+    if (downloads) {
+      try {
+        await downloads.save({ filename: filename, data: blob });
+        setStatus("Saved " + filename + ".", "ok");
+        return;
+      } catch (e) {
+        if (e && e.code === "declined") { setStatus("Save cancelled. Press Merge PDFs to try again."); return; }
+        if (e && e.code === "rate_limited") { setStatus("A save prompt is already open. Answer it, then try again.", "bad"); return; }
+      }
+    }
+    // Fallback for browsers where the page is opened directly.
+    var url = URL.createObjectURL(blob);
+    statusEl.className = "status ok";
+    statusEl.textContent = "Merged. ";
+    var a = document.createElement("a");
+    a.href = url; a.download = filename; a.textContent = "Download " + filename;
+    statusEl.appendChild(a);
+    a.click();
+  }
+
+  function outName() {
+    var n = ($("outname").value || "").trim().replace(/[\\/:*?"<>|]+/g, "-");
+    if (!n) n = "merged.pdf";
+    if (!/\.pdf$/i.test(n)) n += ".pdf";
+    return n;
+  }
+
+  // Builds the merged PDF once and reuses it for both Preview and Merge & save.
+  async function buildMerged() {
+    if (lastBlob) return lastBlob;
+    var good = files.filter(function (f) { return !f.error; });
+    if (good.length < 2) throw new Error("Add at least two readable PDFs");
+    var out = await PDFLib.PDFDocument.create();
+    var labels = [];
+    for (var i = 0; i < good.length; i++) {
+      var src = await PDFLib.PDFDocument.load(good[i].bytes, { ignoreEncryption: true });
+      var copied = await out.copyPages(src, src.getPageIndices());
+      var name = good[i].name;
+      copied.forEach(function (p, k) { out.addPage(p); labels.push(name + " · p." + (k + 1)); });
+    }
+    var data = await out.save();
+    pageLabels = labels;
+    lastBlob = new Blob([data], { type: "application/pdf" });
+    return lastBlob;
+  }
+
+  async function withBusy(msg, fn) {
+    $("merge").disabled = true;
+    $("previewBtn").disabled = true;
+    setStatus(msg);
+    try {
+      await fn();
+    } catch (e) {
+      setStatus("Merge failed: " + (e && e.message ? e.message : "unknown error") + ". Remove the file that caused it and try again.", "bad");
+    } finally {
+      render();
+    }
+  }
+
+  function merge() {
+    return withBusy("Merging…", async function () {
+      var blob = await buildMerged();
+      await saveBlob(blob, outName());
+    });
+  }
+
+  // ---------- Viewer (continuous pages, grid, zoom, print) ----------
+  var V = { doc: null, kind: "", fileId: null, labels: [], sizes: [], zoom: 1, mode: "pages", cur: 1, io: null, pageEls: [], builtW: 0 };
+  var printUrls = [], sawPrint = false, vRaf = 0, resizeTimer = 0;
+  var PRINT_DPI = 200;
+
+  function pad2(n) { return String(n).padStart(2, "0"); }
+  function vmsg(text, kind) {
+    var el = $("vmsg");
+    el.className = "vmsg" + (kind ? " " + kind : "");
+    el.textContent = text || "";
+  }
+
+  function unloadPage(pg) {
+    pg._tok = (pg._tok || 0) + 1;
+    if (pg._task) { try { pg._task.cancel(); } catch (e) {} pg._task = null; }
+    var cv = pg.firstChild;
+    if (cv && pg._state) { cv.width = 1; cv.height = 1; }
+    pg._state = "";
+  }
+
+  async function renderPage(pg) {
+    if (pg._state || !V.doc) return;
+    var doc = V.doc;
+    var token = pg._tok = (pg._tok || 0) + 1;
+    pg._state = "busy";
+    try {
+      var page = await doc.getPage(Number(pg.dataset.n));
+      if (doc !== V.doc || pg._tok !== token) return;
+      var cssW = pg.clientWidth || 300;
+      var dpr = Math.min(window.devicePixelRatio || 1, 2);
+      var base = page.getViewport({ scale: 1 });
+      var scale = Math.min((cssW * dpr) / base.width, 4000 / Math.max(base.width, base.height));
+      var vp = page.getViewport({ scale: scale });
+      var cv = pg.firstChild;
+      cv.width = Math.round(vp.width);
+      cv.height = Math.round(vp.height);
+      var task = page.render({ canvasContext: cv.getContext("2d"), viewport: vp });
+      pg._task = task;
+      await task.promise;
+      if (pg._tok === token) { pg._task = null; pg._state = "done"; }
+    } catch (e) {
+      if (pg._tok === token) pg._state = "";
+    }
+  }
+
+  function observePages(sc, els) {
+    if (!("IntersectionObserver" in window)) {
+      els.forEach(function (el) { renderPage(el); });
+      return;
+    }
+    V.io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (en.isIntersecting) renderPage(en.target); else unloadPage(en.target);
+      });
+    }, { root: sc, rootMargin: "1200px 0px" });
+    els.forEach(function (el) { V.io.observe(el); });
+  }
+
+  function makeCaption(cls, i) {
+    var cap = document.createElement("div");
+    cap.className = cls;
+    var pn = document.createElement("span"); pn.className = "pn"; pn.textContent = pad2(i + 1);
+    var src = document.createElement("span"); src.className = "src"; src.textContent = V.labels[i] || "";
+    cap.appendChild(pn); cap.appendChild(src);
+    return cap;
+  }
+
+  function makePage(i, s) {
+    var pg = document.createElement("div");
+    pg.className = "vpage";
+    pg.dataset.n = i + 1;
+    pg.style.aspectRatio = s.w + " / " + s.h;
+    pg.appendChild(document.createElement("canvas"));
+    return pg;
+  }
+
+  function buildView() {
+    var sc = $("vscroll");
+    if (V.io) { V.io.disconnect(); V.io = null; }
+    Array.prototype.forEach.call(sc.querySelectorAll(".vpage"), unloadPage);
+    sc.textContent = "";
+    V.pageEls = [];
+    var pgs = [];
+    if (V.mode === "grid") {
+      var grid = document.createElement("div");
+      grid.className = "vgrid";
+      V.sizes.forEach(function (s, i) {
+        var fig = document.createElement("figure");
+        fig.className = "gcell"; fig.tabIndex = 0; fig.setAttribute("role", "button");
+        fig.setAttribute("aria-label", "Go to page " + (i + 1) + (V.labels[i] ? ", " + V.labels[i] : ""));
+        var pg = makePage(i, s);
+        fig.appendChild(pg);
+        fig.appendChild(makeCaption("gcap", i));
+        var go = function () { V.mode = "pages"; buildView(); gotoPage(i + 1); };
+        fig.addEventListener("click", go);
+        fig.addEventListener("keydown", function (e) {
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); }
+        });
+        grid.appendChild(fig);
+        pgs.push(pg);
+      });
+      sc.appendChild(grid);
+    } else {
+      var avail = Math.max(160, sc.clientWidth - 24);
+      V.builtW = sc.clientWidth;
+      var cssW = Math.round(Math.min(avail, 1000) * V.zoom);
+      V.sizes.forEach(function (s, i) {
+        var wrap = document.createElement("div");
+        wrap.className = "vwrap";
+        var pg = makePage(i, s);
+        pg.style.width = cssW + "px";
+        wrap.appendChild(makeCaption("vcap", i));
+        wrap.appendChild(pg);
+        sc.appendChild(wrap);
+        V.pageEls.push(wrap);
+        pgs.push(pg);
+      });
+    }
+    observePages(sc, pgs);
+    syncTools();
+  }
+
+  function syncTools() {
+    var pages = V.mode === "pages";
+    $("vmodePages").setAttribute("aria-pressed", String(pages));
+    $("vmodeGrid").setAttribute("aria-pressed", String(!pages));
+    ["vprev", "vnext", "vpage", "vfit"].forEach(function (id) { $(id).disabled = !pages; });
+    $("vzoomout").disabled = !pages || V.zoom <= 0.5;
+    $("vzoomin").disabled = !pages || V.zoom >= 3;
+    $("vzoomlabel").textContent = Math.round(V.zoom * 100) + "%";
+    $("vpage").value = V.cur;
+  }
+
+  function gotoPage(n) {
+    if (!V.doc) return;
+    n = Math.max(1, Math.min(V.doc.numPages, Math.round(n) || 1));
+    V.cur = n;
+    if (V.mode === "pages" && V.pageEls[n - 1]) $("vscroll").scrollTop = V.pageEls[n - 1].offsetTop - 8;
+    $("vpage").value = n;
+  }
+
+  function setZoom(z) {
+    z = Math.max(0.5, Math.min(3, Math.round(z * 100) / 100));
+    if (z === V.zoom) return;
+    var keep = V.cur;
+    V.zoom = z;
+    buildView();
+    gotoPage(keep);
+  }
+
+  function setMode(m) {
+    if (!V.doc || m === V.mode) return;
+    var keep = V.cur;
+    V.mode = m;
+    buildView();
+    if (m === "pages") gotoPage(keep);
+  }
+
+  async function openViewer(opts) {
+    closeViewer();
+    var doc = await pdfjsLib.getDocument({ data: opts.data }).promise;
+    var pages = [];
+    for (var n = 1; n <= doc.numPages; n++) pages.push(doc.getPage(n));
+    pages = await Promise.all(pages);
+    V.doc = doc; V.kind = opts.kind; V.fileId = opts.fileId || null;
+    V.labels = opts.labels || []; V.zoom = 1; V.mode = "pages"; V.cur = 1;
+    V.sizes = pages.map(function (p) { var vp = p.getViewport({ scale: 1 }); return { w: vp.width, h: vp.height }; });
+    $("vtitle").textContent = opts.title;
+    $("vsub").textContent = opts.sub;
+    $("vtotal").textContent = doc.numPages;
+    $("vpage").max = doc.numPages;
+    $("vrange").value = "";
+    vmsg("");
+    $("viewer").hidden = false;
+    buildView();
+    $("vscroll").scrollTop = 0;
+    $("viewer").scrollIntoView({ block: "start" });
+  }
+
+  function closeViewer() {
+    if (V.io) { V.io.disconnect(); V.io = null; }
+    var sc = $("vscroll");
+    Array.prototype.forEach.call(sc.querySelectorAll(".vpage"), unloadPage);
+    sc.textContent = "";
+    if (V.doc) { try { V.doc.destroy(); } catch (e) {} }
+    V.doc = null; V.kind = ""; V.fileId = null; V.pageEls = []; V.sizes = [];
+    clearPrintArea();
+    vmsg("");
+    $("viewer").hidden = true;
+  }
+
+  function invalidate() {
+    lastBlob = null;
+    if (V.kind === "merged") closeViewer();
+  }
+
+  async function viewFile(id) {
+    var f = files.find(function (x) { return x.id === id; });
+    if (!f || f.error) return;
+    if (!window.pdfjsLib) { setStatus("The viewer did not load. Reload the page and try again.", "bad"); return; }
+    setStatus("Opening " + f.name + "…");
+    try {
+      await openViewer({
+        kind: "file", fileId: id, data: new Uint8Array(f.bytes.slice(0)), title: f.name,
+        sub: f.pages + (f.pages === 1 ? " page" : " pages") + " · " + fmtSize(f.size), labels: []
+      });
+      setStatus("");
+    } catch (e) {
+      closeViewer();
+      setStatus("Could not open " + f.name + ": " + (e && e.message ? e.message : "unknown error") + ".", "bad");
+    }
+  }
+
+  function preview() {
+    if (!window.pdfjsLib) { setStatus("The viewer did not load. Reload the page and try again.", "bad"); return; }
+    return withBusy("Building preview…", async function () {
+      var blob = await buildMerged();
+      var data = new Uint8Array(await blob.arrayBuffer());
+      await openViewer({
+        kind: "merged", data: data, title: "Merged preview",
+        sub: pageLabels.length + (pageLabels.length === 1 ? " page" : " pages") + " · " + fmtSize(blob.size), labels: pageLabels
+      });
+      setStatus("Check the page order, then press Merge & save.", "ok");
+    });
+  }
+
+  // ---------- Printing ----------
+  function parseRange(s, max) {
+    s = (s || "").trim();
+    var out = [], seen = {}, i;
+    if (!s) { for (i = 1; i <= max; i++) out.push(i); return out; }
+    var parts = s.split(/[,\s]+/).filter(Boolean);
+    for (var k = 0; k < parts.length; k++) {
+      var m = /^(\d+)(?:-(\d+))?$/.exec(parts[k]);
+      if (!m) return null;
+      var a = Number(m[1]), b = m[2] ? Number(m[2]) : a;
+      if (a < 1 || b < a || b > max) return null;
+      for (i = a; i <= b; i++) { if (!seen[i]) { seen[i] = true; out.push(i); } }
+    }
+    return out;
+  }
+
+  function clearPrintArea() {
+    $("printArea").textContent = "";
+    printUrls.forEach(function (u) { URL.revokeObjectURL(u); });
+    printUrls = [];
+    document.body.classList.remove("printing");
+  }
+
+  async function printViewer() {
+    var doc = V.doc;
+    if (!doc || $("vprint").disabled) return;
+    var nums = parseRange($("vrange").value, doc.numPages);
+    if (!nums) {
+      vmsg("Page range not understood. Use something like 1-3, 5. This document has " + doc.numPages + " pages.", "bad");
+      return;
+    }
+    $("vprint").disabled = true;
+    clearPrintArea();
+    var area = $("printArea");
+    try {
+      for (var k = 0; k < nums.length; k++) {
+        vmsg("Preparing page " + (k + 1) + " of " + nums.length + "…");
+        var page = await doc.getPage(nums[k]);
+        if (doc !== V.doc) return;
+        var base = page.getViewport({ scale: 1 });
+        var scale = Math.min(PRINT_DPI / 72, 3400 / Math.max(base.width, base.height));
+        var vp = page.getViewport({ scale: scale });
+        var cv = document.createElement("canvas");
+        cv.width = Math.round(vp.width);
+        cv.height = Math.round(vp.height);
+        await page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
+        var blob = await new Promise(function (res) { cv.toBlob(res, "image/jpeg", 0.92); });
+        cv.width = 1; cv.height = 1;
+        if (!blob) throw new Error("Could not encode page " + nums[k]);
+        var url = URL.createObjectURL(blob);
+        printUrls.push(url);
+        var holder = document.createElement("div");
+        holder.className = "pp";
+        var img = new Image();
+        img.alt = "";
+        img.src = url;
+        holder.appendChild(img);
+        area.appendChild(holder);
+        try { await img.decode(); } catch (e) {}
+      }
+      vmsg("Opening the print dialog…");
+      document.body.classList.add("printing");
+      sawPrint = false;
+      window.print();
+      setTimeout(function () {
+        if (sawPrint) return;
+        clearPrintArea();
+        vmsg("No print dialog opened. If this page is running inside another app or viewer, printing may be blocked there. Open the saved copy of this page directly in your browser and print from it.", "bad");
+      }, 1500);
+    } catch (e) {
+      clearPrintArea();
+      vmsg("Could not prepare the pages for printing: " + (e && e.message ? e.message : "unknown error") + ".", "bad");
+    } finally {
+      $("vprint").disabled = false;
+    }
+  }
+
+  window.addEventListener("beforeprint", function () { sawPrint = true; });
+  window.addEventListener("afterprint", function () { clearPrintArea(); if (V.doc) vmsg(""); });
+  window.addEventListener("keydown", function (e) {
+    if ((e.ctrlKey || e.metaKey) && (e.key === "p" || e.key === "P") && V.doc && !$("viewer").hidden) {
+      e.preventDefault();
+      printViewer();
+    }
+  });
+
+  $("vclose").addEventListener("click", closeViewer);
+  $("vprev").addEventListener("click", function () { gotoPage(V.cur - 1); });
+  $("vnext").addEventListener("click", function () { gotoPage(V.cur + 1); });
+  $("vpage").addEventListener("change", function () { gotoPage(Number($("vpage").value)); });
+  $("vzoomout").addEventListener("click", function () { setZoom(V.zoom - 0.25); });
+  $("vzoomin").addEventListener("click", function () { setZoom(V.zoom + 0.25); });
+  $("vfit").addEventListener("click", function () { setZoom(1); });
+  $("vmodePages").addEventListener("click", function () { setMode("pages"); });
+  $("vmodeGrid").addEventListener("click", function () { setMode("grid"); });
+  $("vprint").addEventListener("click", printViewer);
+  $("vrange").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); printViewer(); } });
+  $("vscroll").addEventListener("scroll", function () {
+    if (vRaf || V.mode !== "pages") return;
+    vRaf = requestAnimationFrame(function () {
+      vRaf = 0;
+      var y = $("vscroll").scrollTop + 24, cur = 1;
+      for (var i = 0; i < V.pageEls.length; i++) { if (V.pageEls[i].offsetTop <= y) cur = i + 1; else break; }
+      if (cur !== V.cur) { V.cur = cur; if (document.activeElement !== $("vpage")) $("vpage").value = cur; }
+    });
+  });
+  window.addEventListener("resize", function () {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function () {
+      if (!V.doc || V.mode !== "pages" || $("viewer").hidden) return;
+      if (Math.abs($("vscroll").clientWidth - V.builtW) > 8) { var keep = V.cur; buildView(); gotoPage(keep); }
+    }, 200);
+  });
+
+  if (window.pdfjsLib && pdfjsLib.GlobalWorkerOptions) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("./pdf.worker.min.js", document.baseURI).href;
+  }
+
+  $("pick").addEventListener("click", function () { $("file").click(); });
+  $("file").addEventListener("change", function (e) { addFiles(e.target.files); e.target.value = ""; });
+  $("merge").addEventListener("click", merge);
+  $("previewBtn").addEventListener("click", preview);
+  $("clear").addEventListener("click", function () { files = []; closeViewer(); invalidate(); setStatus(""); render(); });
+  $("sample").addEventListener("click", async function () {
+    setStatus("Building sample files…");
+    await addBuffer("sample-quote.pdf", await makeSample("Sample quote", 2));
+    await addBuffer("sample-drawing-notes.pdf", await makeSample("Sample drawing notes", 3));
+    invalidate(); render(); setStatus("");
+  });
+
+  var drop = $("drop");
+  ["dragenter", "dragover"].forEach(function (t) {
+    drop.addEventListener(t, function (e) {
+      if (dragId !== null) return;
+      e.preventDefault(); drop.classList.add("over");
+    });
+  });
+  ["dragleave", "drop"].forEach(function (t) {
+    drop.addEventListener(t, function () { drop.classList.remove("over"); });
+  });
+  drop.addEventListener("drop", function (e) {
+    if (dragId !== null) return;
+    e.preventDefault();
+    if (e.dataTransfer && e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+  });
+  // Stop the browser from opening a PDF dropped outside the drop zone.
+  window.addEventListener("dragover", function (e) { e.preventDefault(); });
+  window.addEventListener("drop", function (e) { e.preventDefault(); });
+
+
+  // Files opened from the operating system ("Open with") arrive here when installed as an app.
+  if ("launchQueue" in window) {
+    launchQueue.setConsumer(async function (params) {
+      if (!params.files || !params.files.length) return;
+      var added = [];
+      for (var i = 0; i < params.files.length; i++) {
+        try {
+          var file = await params.files[i].getFile();
+          await addBuffer(file.name, await file.arrayBuffer());
+          added.push(files[files.length - 1]);
+        } catch (e) {}
+      }
+      if (!added.length) return;
+      invalidate();
+      render();
+      setStatus("");
+      if (added.length === 1 && !added[0].error) viewFile(added[0].id);
+    });
+  }
+
+  if (!window.PDFLib || !window.pdfjsLib) {
+    setStatus("The PDF libraries did not load, so files cannot be opened. Check that pdf-lib.min.js, pdf.min.js and pdf.worker.min.js are in the same folder as this page.", "bad");
+  }
+
+  render();
+})();
+</script>
+
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", function () { navigator.serviceWorker.register("sw.js").catch(function () {}); });
+}
+</script>
+</body></html>

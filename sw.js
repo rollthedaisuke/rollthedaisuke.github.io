@@ -1,7 +1,7 @@
 // Serves the app from a local cache so it opens instantly and works offline.
 // Cached copies refresh in the background, so changes appear the next time the app is opened.
-const CACHE = "pdf-merger-v1";
-const ASSETS = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./vendor/pdf-lib.min.js", "./vendor/pdf.min.js", "./vendor/pdf.worker.min.js"];
+const CACHE = "pdf-merger-v2";
+const ASSETS = ["./", "./index.html", "./pink.html", "./manifest.webmanifest", "./pink.webmanifest", "./icon-192.png", "./icon-512.png", "./pink-icon-192.png", "./pink-icon-512.png", "./pdf-lib.min.js", "./pdf.min.js", "./pdf.worker.min.js"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));

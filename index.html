@@ -261,8 +261,8 @@ input[type="number"] { width: 4.2rem; text-align: center; }
 </main>
 <div id="printArea" class="printarea" aria-hidden="true"></div>
 
-<script src="./vendor/pdf-lib.min.js"></script>
-<script src="./vendor/pdf.min.js"></script>
+<script src="./pdf-lib.min.js"></script>
+<script src="./pdf.min.js"></script>
 <script>
 (function () {
   var files = [];          // {id, name, size, bytes, pages, error}
@@ -825,7 +825,7 @@ input[type="number"] { width: 4.2rem; text-align: center; }
   });
 
   if (window.pdfjsLib && pdfjsLib.GlobalWorkerOptions) {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("./vendor/pdf.worker.min.js", document.baseURI).href;
+    pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("./pdf.worker.min.js", document.baseURI).href;
   }
 
   $("pick").addEventListener("click", function () { $("file").click(); });
@@ -878,6 +878,10 @@ input[type="number"] { width: 4.2rem; text-align: center; }
       setStatus("");
       if (added.length === 1 && !added[0].error) viewFile(added[0].id);
     });
+  }
+
+  if (!window.PDFLib || !window.pdfjsLib) {
+    setStatus("The PDF libraries did not load, so files cannot be opened. Check that pdf-lib.min.js, pdf.min.js and pdf.worker.min.js are in the same folder as this page.", "bad");
   }
 
   render();
