@@ -252,6 +252,7 @@ input[type="number"] { width: 4.2rem; text-align: center; }
         <label for="vrange" class="hintlabel">Print pages</label>
         <input id="vrange" type="text" placeholder="All, or 1-3, 5" spellcheck="false" autocomplete="off">
         <button type="button" class="primary" id="vprint">Print</button>
+        <button type="button" id="vopen" title="Opens the PDF in a new browser tab, where the browser's own viewer can print it">Open in tab</button>
       </div>
     </div>
     <div id="vscroll" class="vscroll" tabindex="0" aria-label="Document pages"></div>
@@ -485,9 +486,8 @@ input[type="number"] { width: 4.2rem; text-align: center; }
   }
 
   // ---------- Viewer (continuous pages, grid, zoom, print) ----------
-  var V = { doc: null, kind: "", fileId: null, labels: [], sizes: [], zoom: 1, mode: "pages", cur: 1, io: null, pageEls: [], builtW: 0 };
+  var V = { doc: null, kind: "", fileId: null, labels: [], sizes: [], zoom: 1, mode: "pages", cur: 1, io: null, pageEls: [], builtW: 0, blob: null, blobUrl: "" };
   var printUrls = [], sawPrint = false, vRaf = 0, resizeTimer = 0;
-  var PRINT_DPI = 200;
 
   function pad2(n) { return String(n).padStart(2, "0"); }
   function vmsg(text, kind) {
@@ -644,11 +644,12 @@ input[type="number"] { width: 4.2rem; text-align: center; }
 
   async function openViewer(opts) {
     closeViewer();
+    var blob = new Blob([opts.data], { type: "application/pdf" });
     var doc = await pdfjsLib.getDocument({ data: opts.data }).promise;
     var pages = [];
     for (var n = 1; n <= doc.numPages; n++) pages.push(doc.getPage(n));
     pages = await Promise.all(pages);
-    V.doc = doc; V.kind = opts.kind; V.fileId = opts.fileId || null;
+    V.doc = doc; V.blob = blob; V.kind = opts.kind; V.fileId = opts.fileId || null;
     V.labels = opts.labels || []; V.zoom = 1; V.mode = "pages"; V.cur = 1;
     V.sizes = pages.map(function (p) { var vp = p.getViewport({ scale: 1 }); return { w: vp.width, h: vp.height }; });
     $("vtitle").textContent = opts.title;
@@ -669,7 +670,8 @@ input[type="number"] { width: 4.2rem; text-align: center; }
     Array.prototype.forEach.call(sc.querySelectorAll(".vpage"), unloadPage);
     sc.textContent = "";
     if (V.doc) { try { V.doc.destroy(); } catch (e) {} }
-    V.doc = null; V.kind = ""; V.fileId = null; V.pageEls = []; V.sizes = [];
+    if (V.blobUrl) { URL.revokeObjectURL(V.blobUrl); }
+    V.doc = null; V.blob = null; V.blobUrl = ""; V.kind = ""; V.fileId = null; V.pageEls = []; V.sizes = [];
     clearPrintArea();
     vmsg("");
     $("viewer").hidden = true;
@@ -741,6 +743,7 @@ input[type="number"] { width: 4.2rem; text-align: center; }
       vmsg("Page range not understood. Use something like 1-3, 5. This document has " + doc.numPages + " pages.", "bad");
       return;
     }
+    var dpi = nums.length <= 12 ? 200 : nums.length <= 30 ? 150 : 110;
     $("vprint").disabled = true;
     clearPrintArea();
     var area = $("printArea");
@@ -750,13 +753,13 @@ input[type="number"] { width: 4.2rem; text-align: center; }
         var page = await doc.getPage(nums[k]);
         if (doc !== V.doc) return;
         var base = page.getViewport({ scale: 1 });
-        var scale = Math.min(PRINT_DPI / 72, 3400 / Math.max(base.width, base.height));
+        var scale = Math.min(dpi / 72, 3400 / Math.max(base.width, base.height));
         var vp = page.getViewport({ scale: scale });
         var cv = document.createElement("canvas");
         cv.width = Math.round(vp.width);
         cv.height = Math.round(vp.height);
         await page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
-        var blob = await new Promise(function (res) { cv.toBlob(res, "image/jpeg", 0.92); });
+        var blob = await new Promise(function (res) { cv.toBlob(res, "image/jpeg", 0.88); });
         cv.width = 1; cv.height = 1;
         if (!blob) throw new Error("Could not encode page " + nums[k]);
         var url = URL.createObjectURL(blob);
@@ -768,7 +771,6 @@ input[type="number"] { width: 4.2rem; text-align: center; }
         img.src = url;
         holder.appendChild(img);
         area.appendChild(holder);
-        try { await img.decode(); } catch (e) {}
       }
       vmsg("Opening the print dialog…");
       document.body.classList.add("printing");
@@ -781,10 +783,18 @@ input[type="number"] { width: 4.2rem; text-align: center; }
       }, 1500);
     } catch (e) {
       clearPrintArea();
-      vmsg("Could not prepare the pages for printing: " + (e && e.message ? e.message : "unknown error") + ".", "bad");
+      vmsg("Could not prepare the pages for printing: " + (e && e.message ? e.message : "unknown error") + ". Try Open in tab and print from there.", "bad");
     } finally {
       $("vprint").disabled = false;
     }
+  }
+
+  function openInTab() {
+    if (!V.blob) return;
+    if (!V.blobUrl) V.blobUrl = URL.createObjectURL(V.blob);
+    var w = window.open(V.blobUrl, "_blank");
+    if (!w) vmsg("The browser did not open a new tab. Allow pop-ups for this page and try again.", "bad");
+    else vmsg("Opened in a new tab. Use the printer button there, or press Ctrl+P.");
   }
 
   window.addEventListener("beforeprint", function () { sawPrint = true; });
@@ -806,6 +816,7 @@ input[type="number"] { width: 4.2rem; text-align: center; }
   $("vmodePages").addEventListener("click", function () { setMode("pages"); });
   $("vmodeGrid").addEventListener("click", function () { setMode("grid"); });
   $("vprint").addEventListener("click", printViewer);
+  $("vopen").addEventListener("click", openInTab);
   $("vrange").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); printViewer(); } });
   $("vscroll").addEventListener("scroll", function () {
     if (vRaf || V.mode !== "pages") return;
