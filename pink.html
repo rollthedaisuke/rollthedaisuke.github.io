@@ -769,10 +769,20 @@ input[type="number"] { width: 4.2rem; text-align: center; }
         holder.className = "pp";
         var img = new Image();
         img.alt = "";
+        var loaded = new Promise(function (res, rej) {
+          img.onload = res;
+          img.onerror = function () { rej(new Error("Could not load page " + nums[k] + " for printing")); };
+        });
         img.src = url;
         holder.appendChild(img);
         area.appendChild(holder);
+        await loaded;
       }
+      var imgsReady = area.querySelectorAll("img");
+      for (var q = 0; q < imgsReady.length; q++) {
+        if (!imgsReady[q].complete || !imgsReady[q].naturalWidth) throw new Error("Page " + (q + 1) + " was not ready");
+      }
+      await new Promise(function (r) { setTimeout(r, 150); });
       vmsg("Opening the print dialog…");
       document.body.classList.add("printing");
       sawPrint = false;
@@ -799,7 +809,7 @@ input[type="number"] { width: 4.2rem; text-align: center; }
   }
 
   window.addEventListener("beforeprint", function () { sawPrint = true; });
-  window.addEventListener("afterprint", function () { clearPrintArea(); if (V.doc) vmsg(""); });
+  window.addEventListener("afterprint", function () { if (V.doc) vmsg(""); });
   window.addEventListener("keydown", function (e) {
     if ((e.ctrlKey || e.metaKey) && (e.key === "p" || e.key === "P") && V.doc && !$("viewer").hidden) {
       e.preventDefault();
