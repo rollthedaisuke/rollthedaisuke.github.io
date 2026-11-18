@@ -1,6 +1,6 @@
 {
-  "name": "PDF Merger Pink",
-  "short_name": "Merger Pink",
+  "name": "PDF Merger",
+  "short_name": "PDFM",
   "description": "View, print and merge PDFs. Files stay on your computer.",
   "start_url": "./",
   "scope": "./",
