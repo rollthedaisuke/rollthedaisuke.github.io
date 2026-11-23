@@ -31,5 +31,11 @@
       },
       "launch_type": "single-client"
     }
-  ]
+  ],
+  "launch_handler": {
+    "client_mode": [
+      "focus-existing",
+      "auto"
+    ]
+  }
 }

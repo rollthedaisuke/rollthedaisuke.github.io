@@ -1,12 +1,12 @@
 {
   "name": "PDF Merger",
-  "short_name": "PDFM",
+  "short_name": "PDF Merger",
   "description": "View, print and merge PDFs. Files stay on your computer.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#fdeef3",
-  "theme_color": "#cf3a77",
+  "background_color": "#f3f5f7",
+  "theme_color": "#1f4f8f",
   "icons": [
     {
       "src": "icon-192.png",
@@ -31,5 +31,11 @@
       },
       "launch_type": "single-client"
     }
-  ]
+  ],
+  "launch_handler": {
+    "client_mode": [
+      "focus-existing",
+      "auto"
+    ]
+  }
 }
